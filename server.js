@@ -25,7 +25,7 @@ if (!AIS_API_KEY) {
 // ─── AISstream WebSocket manager ─────────────────────────────────────────────
 
 let ws = null;
-let reconnectDelay = 5000;
+let reconnectDelay = 60_000;   // start at 1 min — vessels move slowly, no need to hammer on disconnect
 let messageCount = 0;
 let connectedAt = null;
 let isConnected = false;
@@ -38,7 +38,7 @@ function connect() {
     console.log(`[AIS] Connected — subscribing to ${PORT_BOUNDING_BOXES.length} port regions`);
     connectedAt = new Date().toISOString();
     isConnected = true;
-    reconnectDelay = 5000; // reset backoff on successful connect
+    reconnectDelay = 60_000; // reset to 1 min on successful connect
 
     ws.send(JSON.stringify({
       APIKey: AIS_API_KEY,
@@ -78,7 +78,7 @@ function connect() {
     console.log(`[AIS] Reconnecting in ${reconnectDelay / 1000}s…`);
 
     setTimeout(() => {
-      reconnectDelay = Math.min(reconnectDelay * 2, 60000); // cap at 60s
+      reconnectDelay = Math.min(reconnectDelay * 2, 10 * 60_000); // cap at 10 min
       connect();
     }, reconnectDelay);
   });
