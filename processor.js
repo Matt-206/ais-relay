@@ -2,7 +2,7 @@
 
 const { PORTS, inBox, normalizeDestination } = require('./ports-config');
 
-const VESSEL_EXPIRY_MS = 10 * 60 * 1000; // 10 minutes
+const VESSEL_EXPIRY_MS = 20 * 60 * 1000; // 20 minutes — covers moored/anchored ships (3-min AIS interval) through brief reconnect gaps
 
 // In-memory vessel state per port: mmsi → vessel object
 const portVessels = {};
