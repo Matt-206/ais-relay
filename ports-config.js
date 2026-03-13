@@ -18,13 +18,7 @@ const PORTS = [
     inner: { lat: [1.15, 1.45], lon: [103.65, 104.10] },
     outer: { lat: [0.90, 1.70], lon: [103.45, 104.40] },
   },
-  {
-    name: 'Shanghai', lat: 30.80, lon: 121.90, max: 150, reliability: 'medium',
-    locode: ['CNSHA','SHANGHAI'],
-    // Extended south to include Yangshan Deep Water Port (lat ~30.62)
-    inner: { lat: [30.60, 31.50], lon: [121.25, 122.40] },
-    outer: { lat: [30.30, 32.00], lon: [120.80, 122.80] },
-  },
+  // Shanghai removed — persistent 0-vessel count across extended AISstream observation windows
   {
     name: 'Los Angeles', lat: 33.73, lon: -118.25, max: 100, reliability: 'high',
     locode: ['USLAX','LOS ANGELES','LA','LONG BEACH'],
@@ -51,12 +45,7 @@ const PORTS = [
     inner: { lat: [24.75, 25.20], lon: [54.85, 55.45] },
     outer: { lat: [24.40, 25.60], lon: [54.40, 56.00] },
   },
-  {
-    name: 'Busan', lat: 35.10, lon: 129.05, max: 120, reliability: 'medium',
-    locode: ['KRPUS','BUSAN'],
-    inner: { lat: [34.90, 35.35], lon: [128.75, 129.30] },
-    outer: { lat: [34.65, 35.65], lon: [128.35, 129.75] },
-  },
+  // Busan removed — persistent 0-vessel count across extended AISstream observation windows
   {
     name: 'New York', lat: 40.67, lon: -74.03, max: 75, reliability: 'high',
     locode: ['USNYC','NEW YORK','NY','NEWARK'],
@@ -100,24 +89,7 @@ const PORTS = [
     inner: { lat: [41.29, 41.48], lon: [2.02, 2.33] },
     outer: { lat: [41.12, 41.68], lon: [1.72, 2.68] },
   },
-  {
-    name: 'Algeciras', lat: 36.13, lon: -5.45, max: 60, reliability: 'low',
-    locode: ['ESALG','ALGECIRAS'],
-    inner: { lat: [35.92, 36.33], lon: [-5.82, -5.18] },
-    outer: { lat: [35.62, 36.58], lon: [-6.28, -4.62] },
-  },
-  {
-    name: 'Ningbo-Zhoushan', lat: 29.88, lon: 122.00, max: 150, reliability: 'low',
-    locode: ['CNNBO','NINGBO','ZHOUSHAN'],
-    inner: { lat: [29.62, 30.18], lon: [121.62, 122.48] },
-    outer: { lat: [29.22, 30.58], lon: [121.05, 122.98] },
-  },
-  {
-    name: 'Port Klang', lat: 3.00, lon: 101.38, max: 80, reliability: 'low',
-    locode: ['MYPKG','PORT KLANG','KLANG'],
-    inner: { lat: [2.82, 3.22], lon: [101.22, 101.72] },
-    outer: { lat: [2.52, 3.52], lon: [100.82, 102.18] },
-  },
+  // Algeciras, Ningbo-Zhoushan, Port Klang removed — persistent 0-vessel counts
   {
     name: 'Tanjung Pelepas', lat: 1.35, lon: 103.55, max: 70, reliability: 'medium',
     locode: ['MYPTP','TANJUNG PELEPAS','PELEPAS'],

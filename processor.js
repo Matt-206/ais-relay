@@ -44,13 +44,18 @@ function classifyStatus(navStatus, speed) {
   return 'unknown';
 }
 
-// ─── D&D rate (port-level, based on a blended 40ft container reference) ──────
+// ─── D&D rate — discounts for low occupancy, surcharges for congestion ────────
+// Low (< 25): 0.75× discount — attracts cargo when berths are open
+// Moderate (25–50): 1.00× — published carrier base rate
+// High (50–75): 1.50× — moderate surcharge
+// Severe (75–90): 2.25× — significant surcharge
+// Critical (90+): 3.50× — maximum surcharge
 function getDDRate(score, base = 800) {
-  if (score < 25) return { rate: Math.round(base * 1.0),  mult: 1.0,  level: 'Low',      color: '#22c55e' };
-  if (score < 50) return { rate: Math.round(base * 1.75), mult: 1.75, level: 'Moderate', color: '#eab308' };
-  if (score < 75) return { rate: Math.round(base * 2.75), mult: 2.75, level: 'High',     color: '#f97316' };
-  if (score < 90) return { rate: Math.round(base * 3.5),  mult: 3.5,  level: 'Severe',   color: '#ef4444' };
-  return              { rate: Math.round(base * 4.5),  mult: 4.5,  level: 'Critical', color: '#991b1b' };
+  if (score < 25) return { rate: Math.round(base * 0.75), mult: 0.75, level: 'Low',      color: '#22c55e' };
+  if (score < 50) return { rate: Math.round(base * 1.00), mult: 1.00, level: 'Moderate', color: '#eab308' };
+  if (score < 75) return { rate: Math.round(base * 1.50), mult: 1.50, level: 'High',     color: '#f97316' };
+  if (score < 90) return { rate: Math.round(base * 2.25), mult: 2.25, level: 'Severe',   color: '#ef4444' };
+  return              { rate: Math.round(base * 3.50), mult: 3.50, level: 'Critical', color: '#991b1b' };
 }
 
 // ─── Per-container-type D&D rates ────────────────────────────────────────────
