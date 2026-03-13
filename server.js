@@ -4,10 +4,18 @@ const express = require('express');
 const cors = require('cors');
 const WebSocket = require('ws');
 const { processMessage, buildPortStates } = require('./processor');
+const { PORTS } = require('./ports-config');
 
 const PORT = process.env.PORT || 3001;
 const AIS_API_KEY = process.env.AISSTREAM_API_KEY;
 const AIS_ENDPOINT = 'wss://stream.aisstream.io/v0/stream';
+
+// Use outer bounding boxes for each configured port — avoids triggering
+// AISstream's global-subscription throttle on free plans
+const PORT_BOUNDING_BOXES = PORTS.map(p => [
+  [p.outer.lat[0], p.outer.lon[0]],
+  [p.outer.lat[1], p.outer.lon[1]],
+]);
 
 if (!AIS_API_KEY) {
   console.error('FATAL: AISSTREAM_API_KEY env var is required');
@@ -27,14 +35,14 @@ function connect() {
   ws = new WebSocket(AIS_ENDPOINT);
 
   ws.on('open', () => {
-    console.log('[AIS] Connected — subscribing globally');
+    console.log(`[AIS] Connected — subscribing to ${PORT_BOUNDING_BOXES.length} port regions`);
     connectedAt = new Date().toISOString();
     isConnected = true;
     reconnectDelay = 5000; // reset backoff on successful connect
 
     ws.send(JSON.stringify({
       APIKey: AIS_API_KEY,
-      BoundingBoxes: [[[-90, -180], [90, 180]]],
+      BoundingBoxes: PORT_BOUNDING_BOXES,
       FilterMessageTypes: [
         'PositionReport',
         'ShipStaticData',
@@ -48,10 +56,10 @@ function connect() {
 
   ws.on('message', (data) => {
     messageCount++;
+    if (messageCount === 1) console.log('[AIS] First message received — data flowing!');
     processMessage(data.toString());
 
-    // Log throughput every 10,000 messages
-    if (messageCount % 10000 === 0) {
+    if (messageCount % 5000 === 0) {
       console.log(`[AIS] ${messageCount.toLocaleString()} messages processed`);
     }
   });
