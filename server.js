@@ -105,6 +105,9 @@ app.get('/', (req, res) => {
   });
 });
 
+// Build ID for deploy verification (commercial-only metrics = v2)
+const RELAY_VERSION = 'v2-commercial-only';
+
 // All port states
 app.get('/ports', (req, res) => {
   const ports = buildPortStates(messageCount);
@@ -114,6 +117,7 @@ app.get('/ports', (req, res) => {
     timestamp: new Date().toISOString(),
     source: 'live',
     relayConnected: isConnected,
+    relayVersion: RELAY_VERSION,
   });
 });
 
@@ -124,7 +128,7 @@ app.get('/port/:name', (req, res) => {
     p => p.name.toLowerCase() === decodeURIComponent(req.params.name).toLowerCase()
   );
   if (!port) return res.status(404).json({ error: 'Port not found' });
-  res.json({ ...port, source: 'live' });
+  res.json({ ...port, source: 'live', relayVersion: RELAY_VERSION });
 });
 
 app.listen(PORT, () => {
