@@ -14,18 +14,57 @@ for (const p of PORTS) portVessels[p.name] = new Map();
 const staticCache = new Map();
 
 // ─── Persistent hourly history (survives relay restarts) ─────────────────────
+// Format: { portName: { "YYYY-MM-DD": [24 scores] } } — keep last 7 days
 const HISTORY_FILE = path.join(process.cwd(), '.ais-hourly-history.json');
+const HISTORY_DAYS = 7;
+
+function dateKey(d) {
+  const y = d.getUTCFullYear();
+  const m = String(d.getUTCMonth() + 1).padStart(2, '0');
+  const day = String(d.getUTCDate()).padStart(2, '0');
+  return `${y}-${m}-${day}`;
+}
 
 function loadHourlyHistory() {
   try {
     const raw = fs.readFileSync(HISTORY_FILE, 'utf8');
-    return JSON.parse(raw);
+    const data = JSON.parse(raw);
+    const result = {};
+    const today = dateKey(new Date());
+    for (const portName of Object.keys(data)) {
+      const v = data[portName];
+      if (Array.isArray(v)) {
+        // Migrate old format: single array → yesterday's data
+        const yesterday = new Date();
+        yesterday.setUTCDate(yesterday.getUTCDate() - 1);
+        result[portName] = { [dateKey(yesterday)]: v };
+      } else if (v && typeof v === 'object' && !Array.isArray(v)) {
+        result[portName] = v;
+      }
+    }
+    return result;
   } catch {
     return {};
   }
 }
 
+function pruneHistory(history) {
+  const today = new Date();
+  const cutoff = new Date(today);
+  cutoff.setUTCDate(cutoff.getUTCDate() - HISTORY_DAYS);
+  const cutoffKey = dateKey(cutoff);
+  for (const portName of Object.keys(history)) {
+    const days = history[portName];
+    if (days && typeof days === 'object') {
+      for (const key of Object.keys(days)) {
+        if (key < cutoffKey) delete days[key];
+      }
+    }
+  }
+}
+
 function saveHourlyHistory(history) {
+  pruneHistory(history);
   try {
     fs.writeFileSync(HISTORY_FILE, JSON.stringify(history), 'utf8');
   } catch (err) {
@@ -55,11 +94,16 @@ function isCommercial(shipType) {
   return typeof shipType === 'number' && shipType >= 70 && shipType <= 89;
 }
 
-function classifyStatus(navStatus, speed) {
+// Zone-aware: outer zone + stopped = anchored (waiting); inner zone + stopped = moored (at berth).
+// Many Class B reports omit NavigationalStatus — defaulting all low-speed to "moored" inflated counts.
+function classifyStatus(navStatus, speed, zone) {
   if (navStatus === 1) return 'anchored';
   if (navStatus === 5) return 'moored';
   if (navStatus === 0 || navStatus === 8) return 'underway';
-  if (speed !== null && speed < 0.5) return 'moored';
+  if (speed !== null && speed < 0.5) {
+    if (zone === 'inner') return 'moored';
+    if (zone === 'outer') return 'anchored';
+  }
   return 'unknown';
 }
 
@@ -142,9 +186,9 @@ function computeScore(vessels, maxCap) {
   const commercial = vessels.filter(v => isCommercial(v.shipType));
   const innerComm  = commercial.filter(v => v.zone === 'inner');
 
-  const anchoredCount = vessels.filter(v => classifyStatus(v.navStatus, v.speed) === 'anchored').length;
-  const mooredCount   = innerVessels.filter(v => classifyStatus(v.navStatus, v.speed) === 'moored').length;
-  const underwayInner = innerVessels.filter(v => classifyStatus(v.navStatus, v.speed) === 'underway').length;
+  const anchoredCount = vessels.filter(v => classifyStatus(v.navStatus, v.speed, v.zone) === 'anchored').length;
+  const mooredCount   = innerVessels.filter(v => classifyStatus(v.navStatus, v.speed, v.zone) === 'moored').length;
+  const underwayInner = innerVessels.filter(v => classifyStatus(v.navStatus, v.speed, v.zone) === 'underway').length;
 
   if (vessels.length === 0) return 0;
   if (commercial.length === 0 && anchoredCount === 0) return 0;
@@ -155,31 +199,57 @@ function computeScore(vessels, maxCap) {
   const slowVessels = innerVessels.filter(v => v.speed !== null && v.speed < 2).length;
   const lowSpeedRatio = innerVessels.length > 0 ? slowVessels / innerVessels.length : 0;
   const lowSpeedScore = lowSpeedRatio * 20;
-  const inboundCount = outerVessels.filter(v => classifyStatus(v.navStatus, v.speed) === 'underway').length;
+  const inboundCount = outerVessels.filter(v => classifyStatus(v.navStatus, v.speed, v.zone) === 'underway').length;
   const inboundPressure = Math.min(1, inboundCount / Math.max(1, maxCap * 0.5)) * 15;
 
   return Math.min(100, Math.round(anchoredScore + densityScore + lowSpeedScore + inboundPressure));
 }
 
-// ─── 12-hour forecast with mean-reversion + persisted history ───────────────
+// ─── 12-hour forecast: multi-day history + trend + port-specific time-of-day ─
 const NEUTRAL_SCORE = 38; // industry benchmark for a busy-but-normal port day
 
-function forecast(portName, currentScore, hourlyHistory) {
-  const history = hourlyHistory[portName] ?? new Array(24).fill(null);
+function getSameHourAverage(historyByDate, targetHour) {
+  const scores = [];
+  for (const day of Object.values(historyByDate)) {
+    if (Array.isArray(day) && day[targetHour] != null) scores.push(day[targetHour]);
+  }
+  if (scores.length === 0) return null;
+  return scores.reduce((a, b) => a + b, 0) / scores.length;
+}
+
+function getTrend(currentScore, todayHours, nowHour) {
+  const prev = todayHours[nowHour - 1];
+  const prev2 = todayHours[nowHour - 2];
+  if (prev == null) return 0;
+  const recent = prev2 != null ? (prev + prev2) / 2 : prev;
+  const delta = currentScore - recent;
+  return Math.max(-5, Math.min(5, delta * 0.15)); // modest nudge ±5
+}
+
+function forecast(portName, currentScore, hourlyHistory, utcOffset = 0) {
+  const historyByDate = hourlyHistory[portName];
+  const today = dateKey(new Date());
+  const todayHours = (historyByDate && historyByDate[today]) ? historyByDate[today] : new Array(24).fill(null);
   const nowHour = new Date().getUTCHours();
+
+  todayHours[nowHour] = currentScore;
+  const trend = getTrend(currentScore, todayHours, nowHour);
 
   return Array.from({ length: 12 }, (_, h) => {
     const fh = (nowHour + h + 1) % 24;
+    const sameHourAvg = historyByDate ? getSameHourAverage(historyByDate, fh) : null;
     let base;
 
-    if (history[fh] !== null) {
-      base = history[fh] * 0.6 + currentScore * 0.4;
+    if (sameHourAvg != null) {
+      base = sameHourAvg * 0.6 + currentScore * 0.4;
+      base += trend * (1 - (h + 1) / 13); // trend fades over horizon
     } else {
       const reversionWeight = (h + 1) / 12 * 0.28;
       base = currentScore * (1 - reversionWeight) + NEUTRAL_SCORE * reversionWeight;
     }
 
-    const timeMult = (fh >= 6 && fh <= 20) ? 1.08 : 0.88;
+    const localHour = (fh + utcOffset + 24) % 24;
+    const timeMult = (localHour >= 6 && localHour <= 20) ? 1.08 : 0.88;
     return Math.round(Math.min(100, Math.max(0, base * timeMult)));
   });
 }
@@ -301,18 +371,21 @@ function buildPortStates(messageCount = 0) {
     const score = computeScore(vessels, port.max);
     const { rate, mult, level, color } = getDDRate(score);
 
-    // Record hourly history (overwrite current hour bucket)
-    if (!hourlyHistory[port.name]) hourlyHistory[port.name] = new Array(24).fill(null);
-    hourlyHistory[port.name][new Date().getUTCHours()] = score;
+    // Record hourly history (multi-day format)
+    const today = dateKey(new Date());
+    if (!hourlyHistory[port.name]) hourlyHistory[port.name] = {};
+    if (!hourlyHistory[port.name][today]) hourlyHistory[port.name][today] = new Array(24).fill(null);
+    hourlyHistory[port.name][today][new Date().getUTCHours()] = score;
 
-    const fc = forecast(port.name, score, hourlyHistory);
+    const utcOffset = port.utcOffset ?? 0;
+    const fc = forecast(port.name, score, hourlyHistory, utcOffset);
     const containerRates = computeContainerRates(mult);
 
-    const anchored = vessels.filter(v => classifyStatus(v.navStatus, v.speed) === 'anchored').length;
-    const moored  = vessels.filter(v => classifyStatus(v.navStatus, v.speed) === 'moored').length;
-    const underway = vessels.filter(v => classifyStatus(v.navStatus, v.speed) === 'underway').length;
+    const anchored = vessels.filter(v => classifyStatus(v.navStatus, v.speed, v.zone) === 'anchored').length;
+    const moored  = vessels.filter(v => classifyStatus(v.navStatus, v.speed, v.zone) === 'moored').length;
+    const underway = vessels.filter(v => classifyStatus(v.navStatus, v.speed, v.zone) === 'underway').length;
     const inbound  = vessels.filter(
-      v => v.zone === 'outer' && classifyStatus(v.navStatus, v.speed) === 'underway'
+      v => v.zone === 'outer' && classifyStatus(v.navStatus, v.speed, v.zone) === 'underway'
     ).length;
     const other = vessels.length - anchored - moored - underway;
 
@@ -321,7 +394,7 @@ function buildPortStates(messageCount = 0) {
     const confidence = getConfidence(totalVessels, commercialVessels, messageCount);
 
     const vesselList = commercial
-      .map(v => ({ ...v, statusLabel: classifyStatus(v.navStatus, v.speed) }))
+      .map(v => ({ ...v, statusLabel: classifyStatus(v.navStatus, v.speed, v.zone) }))
       .sort((a, b) => {
         const order = { anchored: 0, moored: 1, underway: 2, unknown: 3 };
         return (order[a.statusLabel] ?? 3) - (order[b.statusLabel] ?? 3);
