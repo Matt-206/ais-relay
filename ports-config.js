@@ -18,7 +18,7 @@ const PORTS = [
   {
     name: 'Singapore', lat: 1.27, lon: 103.82, max: capacities.Singapore ?? 120, berthCapacity: berthCap.Singapore ?? 56, reliability: 'high', utcOffset: 8,
     locode: ['SGSIN','SINGAPORE','SGP','SNGPORE'],
-    inner: { lat: [1.22, 1.32], lon: [103.76, 104.02] },
+    inner: { lat: [1.22, 1.32], lon: [103.60, 104.02] },
     outer: { lat: [1.08, 1.42], lon: [103.62, 104.18] },
     berthZones: berthZones.Singapore?.berthZones,
     anchorageZones: berthZones.Singapore?.anchorageZones,
