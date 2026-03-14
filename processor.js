@@ -393,6 +393,10 @@ function buildPortStates(messageCount = 0) {
     const commercialVessels = commercial.length;
     const confidence = getConfidence(totalVessels, commercialVessels, messageCount);
 
+    // Berth utilization (industry-standard BOR): moored / berthCapacity × 100
+    const berthCap = port.berthCapacity ?? port.max;
+    const berthUtilization = berthCap > 0 ? Math.min(100, Math.round((moored / berthCap) * 100)) : 0;
+
     const vesselList = commercial
       .map(v => ({ ...v, statusLabel: classifyStatus(v.navStatus, v.speed, v.zone) }))
       .sort((a, b) => {
@@ -404,6 +408,8 @@ function buildPortStates(messageCount = 0) {
       name: port.name, lat: port.lat, lon: port.lon,
       reliability: port.reliability,
       score, level, color,
+      berthUtilization,
+      berthCapacity: berthCap,
       ddRate: rate, ddMultiplier: mult,
       anchored, moored, underway, inbound, other,
       totalVessels,
