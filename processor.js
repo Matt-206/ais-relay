@@ -286,7 +286,7 @@ function buildPortStates() {
       v => v.zone === 'outer' && (v.navStatus === 0 || v.navStatus === 8)
     ).length;
 
-    // Surface all commercial vessels in the detail list
+    // Surface all commercial vessels in the detail list (no cap)
     const vesselList = commercial
       .map(v => ({ ...v, statusLabel: classifyStatus(v.navStatus, v.speed) }))
       .sort((a, b) => {
