@@ -25,7 +25,7 @@ if (!AIS_API_KEY) {
 // ─── AISstream WebSocket manager ─────────────────────────────────────────────
 
 let ws = null;
-const RECONNECT_DELAY = 10 * 60_000; // fixed 10 min — vessels move slowly, preserves daily quota
+const RECONNECT_DELAY = 3 * 60_000; // 3 min — balance between message volume and quota preservation
 let messageCount = 0;
 let connectedAt = null;
 let isConnected = false;
@@ -74,7 +74,7 @@ function connect() {
   ws.on('close', (code, reason) => {
     isConnected = false;
     console.log(`[AIS] Disconnected — code:${code} reason:${reason?.toString() || 'none'}`);
-    console.log(`[AIS] Reconnecting in 10 minutes…`);
+    console.log(`[AIS] Reconnecting in 3 minutes…`);
 
     setTimeout(connect, RECONNECT_DELAY);
   });
