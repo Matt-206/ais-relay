@@ -1,39 +1,38 @@
 'use strict';
 
-// 5 highest-value ports — inner = port/berth area, outer = approach/anchorage
-// Zones tightened to avoid inflating counts with distant traffic (e.g. North Sea)
+// 5 highest-value ports — inner = berths/terminals, outer = approach/anchorage
+// Zones calibrated to published port boundaries and anchorage areas
 // Aligned with platform lib/ports-config.ts
-// utcOffset: hours from UTC for port's local time (for time-of-day forecast multiplier)
 const PORTS = [
   {
-    name: 'Rotterdam', lat: 51.95, lon: 4.25, max: 80, reliability: 'high', utcOffset: 1,
+    name: 'Rotterdam', lat: 51.92, lon: 4.25, max: 80, reliability: 'high', utcOffset: 1,
     locode: ['NLRTM','ROTTERDAM','ROTTM','RTM','RTDM'],
-    inner: { lat: [51.85, 52.02], lon: [4.10, 4.55] },
-    outer: { lat: [51.75, 52.15], lon: [3.75, 4.85] },
+    inner: { lat: [51.86, 51.98], lon: [3.95, 4.52] },
+    outer: { lat: [51.78, 52.02], lon: [3.72, 4.72] },
   },
   {
     name: 'Singapore', lat: 1.27, lon: 103.82, max: 120, reliability: 'high', utcOffset: 8,
     locode: ['SGSIN','SINGAPORE','SGP','SNGPORE'],
-    inner: { lat: [1.20, 1.38], lon: [103.72, 104.05] },
-    outer: { lat: [1.05, 1.55], lon: [103.55, 104.25] },
+    inner: { lat: [1.22, 1.32], lon: [103.76, 104.02] },
+    outer: { lat: [1.08, 1.42], lon: [103.62, 104.18] },
   },
   {
-    name: 'Los Angeles', lat: 33.73, lon: -118.27, max: 70, reliability: 'high', utcOffset: -8,
+    name: 'Los Angeles', lat: 33.74, lon: -118.27, max: 70, reliability: 'high', utcOffset: -8,
     locode: ['USLAX','LOS ANGELES','LOSANGELES','LA','LONG BEACH','USLGB'],
-    inner: { lat: [33.65, 33.85], lon: [-118.45, -118.10] },
-    outer: { lat: [33.45, 34.00], lon: [-118.75, -117.85] },
+    inner: { lat: [33.71, 33.78], lon: [-118.32, -118.12] },
+    outer: { lat: [33.62, 33.85], lon: [-118.45, -118.02] },
   },
   {
-    name: 'Hamburg', lat: 53.55, lon: 9.97, max: 60, reliability: 'high', utcOffset: 1,
+    name: 'Hamburg', lat: 53.54, lon: 9.97, max: 60, reliability: 'high', utcOffset: 1,
     locode: ['DEHAM','HAMBURG','HAMBG','HH'],
-    inner: { lat: [53.48, 53.58], lon: [9.85, 10.08] },
-    outer: { lat: [53.38, 53.72], lon: [9.50, 10.55] },
+    inner: { lat: [53.50, 53.58], lon: [9.88, 10.05] },
+    outer: { lat: [53.42, 53.63], lon: [9.72, 10.22] },
   },
   {
-    name: 'Antwerp', lat: 51.27, lon: 4.30, max: 65, reliability: 'high', utcOffset: 1,
+    name: 'Antwerp', lat: 51.27, lon: 4.34, max: 65, reliability: 'high', utcOffset: 1,
     locode: ['BEANR','ANTWERP','ANTWRP','ANR'],
-    inner: { lat: [51.20, 51.35], lon: [4.25, 4.55] },
-    outer: { lat: [51.05, 51.55], lon: [3.85, 4.95] },
+    inner: { lat: [51.22, 51.32], lon: [4.28, 4.48] },
+    outer: { lat: [51.12, 51.42], lon: [4.12, 4.62] },
   },
 ];
 
