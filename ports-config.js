@@ -8,7 +8,7 @@ const berthCap = require('./berth-capacities.json');
 
 const PORTS = [
   {
-    name: 'Rotterdam', lat: 51.92, lon: 4.25, max: capacities.Rotterdam ?? 80, berthCapacity: berthCap.Rotterdam ?? 80, reliability: 'high', utcOffset: 1,
+    name: 'Rotterdam', lat: 51.92, lon: 4.25, max: capacities.Rotterdam ?? 80, berthCapacity: berthCap.Rotterdam ?? 145, reliability: 'high', utcOffset: 1,
     locode: ['NLRTM','ROTTERDAM','ROTTM','RTM','RTDM'],
     inner: { lat: [51.86, 51.98], lon: [3.95, 4.52] },
     outer: { lat: [51.78, 52.02], lon: [3.72, 4.72] },
@@ -26,13 +26,13 @@ const PORTS = [
     outer: { lat: [33.62, 33.85], lon: [-118.45, -118.02] },
   },
   {
-    name: 'Hamburg', lat: 53.54, lon: 9.97, max: capacities.Hamburg ?? 60, berthCapacity: berthCap.Hamburg ?? 60, reliability: 'high', utcOffset: 1,
+    name: 'Hamburg', lat: 53.54, lon: 9.97, max: capacities.Hamburg ?? 60, berthCapacity: berthCap.Hamburg ?? 25, reliability: 'high', utcOffset: 1,
     locode: ['DEHAM','HAMBURG','HAMBG','HH'],
     inner: { lat: [53.50, 53.58], lon: [9.88, 10.05] },
     outer: { lat: [53.42, 53.63], lon: [9.72, 10.22] },
   },
   {
-    name: 'Antwerp', lat: 51.27, lon: 4.34, max: capacities.Antwerp ?? 65, berthCapacity: berthCap.Antwerp ?? 65, reliability: 'high', utcOffset: 1,
+    name: 'Antwerp', lat: 51.27, lon: 4.34, max: capacities.Antwerp ?? 65, berthCapacity: berthCap.Antwerp ?? 28, reliability: 'high', utcOffset: 1,
     locode: ['BEANR','ANTWERP','ANTWRP','ANR'],
     inner: { lat: [51.22, 51.32], lon: [4.28, 4.48] },
     outer: { lat: [51.12, 51.42], lon: [4.12, 4.62] },
