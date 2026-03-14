@@ -181,14 +181,13 @@ function computeContainerRates(mult) {
 // Anchored 40%, density 25%, low-speed 20%, inbound 15%.
 // Uses classifyStatus for anchored/moored/underway so speed infers when navStatus missing.
 function computeScore(vessels, maxCap) {
-  const innerVessels = vessels.filter(v => v.zone === 'inner');
-  const outerVessels = vessels.filter(v => v.zone === 'outer');
   const commercial = vessels.filter(v => isCommercial(v.shipType));
   const innerComm  = commercial.filter(v => v.zone === 'inner');
+  const outerComm  = commercial.filter(v => v.zone === 'outer');
 
-  const anchoredCount = vessels.filter(v => classifyStatus(v.navStatus, v.speed, v.zone) === 'anchored').length;
-  const mooredCount   = innerVessels.filter(v => classifyStatus(v.navStatus, v.speed, v.zone) === 'moored').length;
-  const underwayInner = innerVessels.filter(v => classifyStatus(v.navStatus, v.speed, v.zone) === 'underway').length;
+  const anchoredCount = commercial.filter(v => classifyStatus(v.navStatus, v.speed, v.zone) === 'anchored').length;
+  const mooredCount   = innerComm.filter(v => classifyStatus(v.navStatus, v.speed, v.zone) === 'moored').length;
+  const underwayInner = innerComm.filter(v => classifyStatus(v.navStatus, v.speed, v.zone) === 'underway').length;
 
   if (vessels.length === 0) return 0;
   if (commercial.length === 0 && anchoredCount === 0) return 0;
@@ -196,10 +195,10 @@ function computeScore(vessels, maxCap) {
   const maxAnchored = Math.max(1, maxCap * 0.3);
   const anchoredScore = Math.min(1, anchoredCount / maxAnchored) * 40;
   const densityScore = Math.min(1, innerComm.length / maxCap) * 25;
-  const slowVessels = innerVessels.filter(v => v.speed !== null && v.speed < 2).length;
-  const lowSpeedRatio = innerVessels.length > 0 ? slowVessels / innerVessels.length : 0;
+  const slowVessels = innerComm.filter(v => v.speed !== null && v.speed < 2).length;
+  const lowSpeedRatio = innerComm.length > 0 ? slowVessels / innerComm.length : 0;
   const lowSpeedScore = lowSpeedRatio * 20;
-  const inboundCount = outerVessels.filter(v => classifyStatus(v.navStatus, v.speed, v.zone) === 'underway').length;
+  const inboundCount = outerComm.filter(v => classifyStatus(v.navStatus, v.speed, v.zone) === 'underway').length;
   const inboundPressure = Math.min(1, inboundCount / Math.max(1, maxCap * 0.5)) * 15;
 
   return Math.min(100, Math.round(anchoredScore + densityScore + lowSpeedScore + inboundPressure));
