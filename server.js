@@ -107,7 +107,7 @@ app.get('/', (req, res) => {
 
 // All port states
 app.get('/ports', (req, res) => {
-  const ports = buildPortStates();
+  const ports = buildPortStates(messageCount);
   res.json({
     ports,
     messageCount,
@@ -119,7 +119,7 @@ app.get('/ports', (req, res) => {
 
 // Single port detail
 app.get('/port/:name', (req, res) => {
-  const ports = buildPortStates();
+  const ports = buildPortStates(messageCount);
   const port = ports.find(
     p => p.name.toLowerCase() === decodeURIComponent(req.params.name).toLowerCase()
   );

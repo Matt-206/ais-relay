@@ -1,3 +1,4 @@
 node_modules/
 .env
 .env.local
+.ais-hourly-history.json

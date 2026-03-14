@@ -1,5 +1,7 @@
 'use strict';
 
+const fs = require('fs');
+const path = require('path');
 const { PORTS, inBox, normalizeDestination } = require('./ports-config');
 
 const VESSEL_EXPIRY_MS = 5 * 60 * 60 * 1000; // 5 hours — lets vessel counts accumulate between sparse AISstream bursts
@@ -11,8 +13,25 @@ for (const p of PORTS) portVessels[p.name] = new Map();
 // Static data cache: mmsi → { name, shipType, destination }
 const staticCache = new Map();
 
-// Hourly score history: portName → array[24], updated once per minute per hour bucket
-const hourlyHistory = {};
+// ─── Persistent hourly history (survives relay restarts) ─────────────────────
+const HISTORY_FILE = path.join(process.cwd(), '.ais-hourly-history.json');
+
+function loadHourlyHistory() {
+  try {
+    const raw = fs.readFileSync(HISTORY_FILE, 'utf8');
+    return JSON.parse(raw);
+  } catch {
+    return {};
+  }
+}
+
+function saveHourlyHistory(history) {
+  try {
+    fs.writeFileSync(HISTORY_FILE, JSON.stringify(history), 'utf8');
+  } catch (err) {
+    console.warn('[Processor] Could not persist hourly history:', err.message);
+  }
+}
 
 // ─── Container type definitions with real-market base rates (per container/day, USD)
 // Source: industry benchmarks 2025-2026 for major North European / Asia ports
@@ -114,45 +133,40 @@ function computeContainerRates(mult) {
   });
 }
 
-// ─── Congestion scoring ───────────────────────────────────────────────────────
-// Only confirmed commercial vessels (type 70-89) drive the score.
-// Saturation thresholds raised so score distributes meaningfully:
-//   A (anchor weight 40): saturates at 60% of maxCap anchored
-//   B (density weight 25): saturates at 150% of maxCap commercial in inner
-//   C (slow % weight 20):  fraction of inner commercial vessels moving < 1.5kn
-//   D (inbound weight 15): commercial vessels approaching in outer zone
+// ─── Congestion scoring (aligned with platform lib/congestion.ts) ─────────────
+// Anchored 40%, density 25%, low-speed 20%, inbound 15%.
+// Uses classifyStatus for anchored/moored/underway so speed infers when navStatus missing.
 function computeScore(vessels, maxCap) {
+  const innerVessels = vessels.filter(v => v.zone === 'inner');
+  const outerVessels = vessels.filter(v => v.zone === 'outer');
   const commercial = vessels.filter(v => isCommercial(v.shipType));
-  const allAnchored = vessels.filter(v => v.navStatus === 1);
-
-  // With no commercial vessels and nothing anchored, score is 0
-  if (commercial.length === 0 && allAnchored.length === 0) return 0;
-
-  const innerAll   = vessels.filter(v => v.zone === 'inner');
   const innerComm  = commercial.filter(v => v.zone === 'inner');
-  const anchored   = allAnchored.length; // any anchored vessel is a congestion signal
-  const slow       = innerAll.filter(v => v.speed !== null && v.speed < 1.5).length;
-  const inbound    = commercial.filter(
-    v => v.zone === 'outer' && (v.navStatus === 0 || v.navStatus === 8)
-  ).length;
 
-  const A = Math.min(1, anchored   / Math.max(1, maxCap * 0.60)) * 40;
-  const B = Math.min(1, innerComm.length / Math.max(1, maxCap * 1.50)) * 25;
-  const C = innerAll.length > 0 ? Math.min(1, slow / innerAll.length) * 20 : 0;
-  const D = Math.min(1, inbound   / Math.max(1, maxCap)) * 15;
+  const anchoredCount = vessels.filter(v => classifyStatus(v.navStatus, v.speed) === 'anchored').length;
+  const mooredCount   = innerVessels.filter(v => classifyStatus(v.navStatus, v.speed) === 'moored').length;
+  const underwayInner = innerVessels.filter(v => classifyStatus(v.navStatus, v.speed) === 'underway').length;
 
-  return Math.min(100, Math.round(A + B + C + D));
+  if (vessels.length === 0) return 0;
+  if (commercial.length === 0 && anchoredCount === 0) return 0;
+
+  const maxAnchored = Math.max(1, maxCap * 0.3);
+  const anchoredScore = Math.min(1, anchoredCount / maxAnchored) * 40;
+  const densityScore = Math.min(1, innerComm.length / maxCap) * 25;
+  const slowVessels = innerVessels.filter(v => v.speed !== null && v.speed < 2).length;
+  const lowSpeedRatio = innerVessels.length > 0 ? slowVessels / innerVessels.length : 0;
+  const lowSpeedScore = lowSpeedRatio * 20;
+  const inboundCount = outerVessels.filter(v => classifyStatus(v.navStatus, v.speed) === 'underway').length;
+  const inboundPressure = Math.min(1, inboundCount / Math.max(1, maxCap * 0.5)) * 15;
+
+  return Math.min(100, Math.round(anchoredScore + densityScore + lowSpeedScore + inboundPressure));
 }
 
-// ─── 12-hour forecast with mean-reversion default ────────────────────────────
-// When history exists → blend 60% history + 40% current.
-// When no history → score decays 25% toward NEUTRAL_SCORE over 12 hours,
-// avoiding the "flatline at current score" artifact of the previous implementation.
+// ─── 12-hour forecast with mean-reversion + persisted history ───────────────
 const NEUTRAL_SCORE = 38; // industry benchmark for a busy-but-normal port day
 
-function forecast(portName, currentScore) {
-  const history  = hourlyHistory[portName] ?? new Array(24).fill(null);
-  const nowHour  = new Date().getUTCHours();
+function forecast(portName, currentScore, hourlyHistory) {
+  const history = hourlyHistory[portName] ?? new Array(24).fill(null);
+  const nowHour = new Date().getUTCHours();
 
   return Array.from({ length: 12 }, (_, h) => {
     const fh = (nowHour + h + 1) % 24;
@@ -161,14 +175,24 @@ function forecast(portName, currentScore) {
     if (history[fh] !== null) {
       base = history[fh] * 0.6 + currentScore * 0.4;
     } else {
-      // Mean reversion: weight toward neutral increases linearly over 12 hours
-      const reversionWeight = (h + 1) / 12 * 0.28; // max 28% reversion at h=11
+      const reversionWeight = (h + 1) / 12 * 0.28;
       base = currentScore * (1 - reversionWeight) + NEUTRAL_SCORE * reversionWeight;
     }
 
     const timeMult = (fh >= 6 && fh <= 20) ? 1.08 : 0.88;
     return Math.round(Math.min(100, Math.max(0, base * timeMult)));
   });
+}
+
+// ─── Confidence score from vessel coverage ───────────────────────────────────
+// high:   commercial >= 5 and total >= 3 — reliable congestion signal
+// medium: commercial >= 2 or total >= 2 — usable but sparse
+// low:    else — limited AIS coverage, interpret with caution
+function getConfidence(totalVessels, commercialVessels, messageCount) {
+  if (commercialVessels >= 5 && totalVessels >= 3) return 'high';
+  if (commercialVessels >= 2 || totalVessels >= 2) return 'medium';
+  if (messageCount < 500) return 'low'; // stream just started
+  return 'low';
 }
 
 // ─── AIS message processing ───────────────────────────────────────────────────
@@ -262,35 +286,43 @@ function evictStale() {
 }
 
 // ─── Build full port state objects ───────────────────────────────────────────
-function buildPortStates() {
+function buildPortStates(messageCount = 0) {
   evictStale();
   const now = new Date().toISOString();
 
-  return PORTS.map(port => {
+  // Load persisted history, merge with in-memory
+  const persisted = loadHourlyHistory();
+  const hourlyHistory = { ...persisted };
+
+  const result = PORTS.map(port => {
     const vessels    = Array.from(portVessels[port.name].values());
     const commercial = vessels.filter(v => isCommercial(v.shipType));
 
     const score = computeScore(vessels, port.max);
     const { rate, mult, level, color } = getDDRate(score);
-    const fc             = forecast(port.name, score);
-    const containerRates = computeContainerRates(mult);
 
     // Record hourly history (overwrite current hour bucket)
     if (!hourlyHistory[port.name]) hourlyHistory[port.name] = new Array(24).fill(null);
     hourlyHistory[port.name][new Date().getUTCHours()] = score;
 
-    const anchored  = vessels.filter(v => v.navStatus === 1).length;
-    const moored    = vessels.filter(v => v.navStatus === 5).length;
-    const underway  = vessels.filter(v => v.navStatus === 0 || v.navStatus === 8).length;
-    const inbound   = vessels.filter(
-      v => v.zone === 'outer' && (v.navStatus === 0 || v.navStatus === 8)
-    ).length;
+    const fc = forecast(port.name, score, hourlyHistory);
+    const containerRates = computeContainerRates(mult);
 
-    // Surface all commercial vessels in the detail list (no cap)
+    const anchored = vessels.filter(v => classifyStatus(v.navStatus, v.speed) === 'anchored').length;
+    const moored  = vessels.filter(v => classifyStatus(v.navStatus, v.speed) === 'moored').length;
+    const underway = vessels.filter(v => classifyStatus(v.navStatus, v.speed) === 'underway').length;
+    const inbound  = vessels.filter(
+      v => v.zone === 'outer' && classifyStatus(v.navStatus, v.speed) === 'underway'
+    ).length;
+    const other = vessels.length - anchored - moored - underway;
+
+    const totalVessels = vessels.length;
+    const commercialVessels = commercial.length;
+    const confidence = getConfidence(totalVessels, commercialVessels, messageCount);
+
     const vesselList = commercial
       .map(v => ({ ...v, statusLabel: classifyStatus(v.navStatus, v.speed) }))
       .sort((a, b) => {
-        // Anchored first (most relevant for congestion), then moored, then underway
         const order = { anchored: 0, moored: 1, underway: 2, unknown: 3 };
         return (order[a.statusLabel] ?? 3) - (order[b.statusLabel] ?? 3);
       });
@@ -300,15 +332,28 @@ function buildPortStates() {
       reliability: port.reliability,
       score, level, color,
       ddRate: rate, ddMultiplier: mult,
-      anchored, moored, underway, inbound,
-      totalVessels:      vessels.length,
-      commercialVessels: commercial.length,
-      vessels:           vesselList,
+      anchored, moored, underway, inbound, other,
+      totalVessels,
+      commercialVessels,
+      vessels: vesselList,
       containerRates,
       forecast: fc,
       lastUpdated: now,
+      dataQuality: {
+        totalVessels,
+        commercialVessels,
+        messageCount,
+        anchored,
+        moored,
+        underway,
+        inbound,
+      },
+      confidence,
     };
   });
+
+  saveHourlyHistory(hourlyHistory);
+  return result;
 }
 
 module.exports = { processMessage, buildPortStates };

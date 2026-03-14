@@ -2,36 +2,37 @@
 
 // 5 highest-value ports — concentrates sparse AISstream quota for better coverage
 // Rotterdam, Singapore, LA, Hamburg, Antwerp = top EU + Asia + US gateways
+// Aligned with platform lib/ports-config.ts maxCapacity
 const PORTS = [
   {
-    name: 'Rotterdam', lat: 51.92, lon: 4.22, max: 120, reliability: 'high',
+    name: 'Rotterdam', lat: 51.95, lon: 4.25, max: 80, reliability: 'high',
     locode: ['NLRTM','ROTTERDAM','ROTTM','RTM','RTDM'],
-    inner: { lat: [51.87, 52.02], lon: [3.98, 4.55] },
-    outer: { lat: [51.70, 52.20], lon: [3.50, 5.00] },
+    inner: { lat: [51.80, 52.10], lon: [3.90, 4.60] },
+    outer: { lat: [51.60, 52.30], lon: [3.50, 5.20] },
   },
   {
-    name: 'Singapore', lat: 1.27, lon: 103.85, max: 180, reliability: 'high',
-    locode: ['SGSIN','SINGAPORE','SGP'],
+    name: 'Singapore', lat: 1.27, lon: 103.82, max: 120, reliability: 'high',
+    locode: ['SGSIN','SINGAPORE','SGP','SNGPORE'],
     inner: { lat: [1.15, 1.45], lon: [103.65, 104.10] },
     outer: { lat: [0.90, 1.70], lon: [103.45, 104.40] },
   },
   {
-    name: 'Los Angeles', lat: 33.73, lon: -118.25, max: 100, reliability: 'high',
-    locode: ['USLAX','LOS ANGELES','LA','LONG BEACH'],
+    name: 'Los Angeles', lat: 33.73, lon: -118.27, max: 70, reliability: 'high',
+    locode: ['USLAX','LOS ANGELES','LOSANGELES','LA','LONG BEACH','USLGB'],
     inner: { lat: [33.50, 34.00], lon: [-118.80, -117.90] },
     outer: { lat: [33.20, 34.30], lon: [-119.20, -117.50] },
   },
   {
-    name: 'Hamburg', lat: 53.52, lon: 9.97, max: 70, reliability: 'high',
-    locode: ['DEHAM','HAMBURG'],
+    name: 'Hamburg', lat: 53.55, lon: 9.97, max: 60, reliability: 'high',
+    locode: ['DEHAM','HAMBURG','HAMBG','HH'],
     inner: { lat: [53.45, 53.60], lon: [9.75, 10.15] },
-    outer: { lat: [53.30, 53.80], lon: [9.20, 10.80] },
+    outer: { lat: [53.20, 54.00], lon: [8.80, 11.00] },
   },
   {
-    name: 'Antwerp', lat: 51.25, lon: 4.38, max: 100, reliability: 'high',
-    locode: ['BEANR','ANTWERP','ANR'],
+    name: 'Antwerp', lat: 51.27, lon: 4.30, max: 65, reliability: 'high',
+    locode: ['BEANR','ANTWERP','ANTWRP','ANR'],
     inner: { lat: [51.17, 51.37], lon: [4.22, 4.58] },
-    outer: { lat: [51.00, 51.60], lon: [3.80, 4.90] },
+    outer: { lat: [50.80, 51.80], lon: [3.30, 5.30] },
   },
 ];
 
