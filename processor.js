@@ -2,7 +2,7 @@
 
 const fs = require('fs');
 const path = require('path');
-const { PORTS, inBox, normalizeDestination } = require('./ports-config');
+const { PORTS, inBox, inAnyBox, normalizeDestination } = require('./ports-config');
 
 const VESSEL_EXPIRY_MS = 5 * 60 * 60 * 1000; // 5 hours — lets vessel counts accumulate between sparse AISstream bursts
 
@@ -94,15 +94,17 @@ function isCommercial(shipType) {
   return typeof shipType === 'number' && shipType >= 70 && shipType <= 89;
 }
 
-// Zone-aware: outer zone + stopped = anchored (waiting); inner zone + stopped = moored (at berth).
-// Many Class B reports omit NavigationalStatus — defaulting all low-speed to "moored" inflated counts.
-function classifyStatus(navStatus, speed, zone) {
+// Zone-aware with berth polygons: only vessels in berth areas count as moored.
+// Anchorage zones → anchored. Berth zone + (NavStatus 5 or speed <0.2) → moored.
+function classifyStatus(navStatus, speed, zone, inBerthArea, inAnchorage) {
+  if (inAnchorage) return 'anchored';
   if (navStatus === 1) return 'anchored';
-  if (navStatus === 5) return 'moored';
+  if (navStatus === 5) return inBerthArea ? 'moored' : 'unknown';
   if (navStatus === 0 || navStatus === 8) return 'underway';
   if (speed !== null && speed < 0.5) {
-    if (zone === 'inner') return 'moored';
+    if (inBerthArea && speed < 0.2) return 'moored';
     if (zone === 'outer') return 'anchored';
+    if (inBerthArea === undefined && zone === 'inner') return 'moored';
   }
   return 'unknown';
 }
@@ -185,9 +187,9 @@ function computeScore(vessels, maxCap) {
   const innerComm  = commercial.filter(v => v.zone === 'inner');
   const outerComm  = commercial.filter(v => v.zone === 'outer');
 
-  const anchoredCount = commercial.filter(v => classifyStatus(v.navStatus, v.speed, v.zone) === 'anchored').length;
-  const mooredCount   = innerComm.filter(v => classifyStatus(v.navStatus, v.speed, v.zone) === 'moored').length;
-  const underwayInner = innerComm.filter(v => classifyStatus(v.navStatus, v.speed, v.zone) === 'underway').length;
+  const anchoredCount = commercial.filter(v => classifyStatus(v.navStatus, v.speed, v.zone, v.inBerthArea, v.inAnchorage) === 'anchored').length;
+  const mooredCount   = innerComm.filter(v => classifyStatus(v.navStatus, v.speed, v.zone, v.inBerthArea, v.inAnchorage) === 'moored').length;
+  const underwayInner = innerComm.filter(v => classifyStatus(v.navStatus, v.speed, v.zone, v.inBerthArea, v.inAnchorage) === 'underway').length;
 
   if (vessels.length === 0) return 0;
   if (commercial.length === 0 && anchoredCount === 0) return 0;
@@ -198,7 +200,7 @@ function computeScore(vessels, maxCap) {
   const slowVessels = innerComm.filter(v => v.speed !== null && v.speed < 2).length;
   const lowSpeedRatio = innerComm.length > 0 ? slowVessels / innerComm.length : 0;
   const lowSpeedScore = lowSpeedRatio * 20;
-  const inboundCount = outerComm.filter(v => classifyStatus(v.navStatus, v.speed, v.zone) === 'underway').length;
+  const inboundCount = outerComm.filter(v => classifyStatus(v.navStatus, v.speed, v.zone, v.inBerthArea, v.inAnchorage) === 'underway').length;
   const inboundPressure = Math.min(1, inboundCount / Math.max(1, maxCap * 0.5)) * 15;
 
   return Math.min(100, Math.round(anchoredScore + densityScore + lowSpeedScore + inboundPressure));
@@ -334,9 +336,13 @@ function processMessage(raw) {
   for (const port of PORTS) {
     if (inBox(lat, lon, port.inner)) {
       vessel.zone = 'inner';
+      vessel.inBerthArea = port.berthZones ? inAnyBox(lat, lon, port.berthZones) : undefined;
+      vessel.inAnchorage = port.anchorageZones ? inAnyBox(lat, lon, port.anchorageZones) : false;
       portVessels[port.name].set(mmsi, { ...vessel });
     } else if (inBox(lat, lon, port.outer)) {
       vessel.zone = 'outer';
+      vessel.inBerthArea = false;
+      vessel.inAnchorage = port.anchorageZones ? inAnyBox(lat, lon, port.anchorageZones) : false;
       portVessels[port.name].set(mmsi, { ...vessel });
     } else {
       portVessels[port.name].delete(mmsi);
@@ -381,11 +387,11 @@ function buildPortStates(messageCount = 0) {
     const containerRates = computeContainerRates(mult);
 
     // Metrics from commercial vessels only — matches vessel list and congestion score
-    const anchored = commercial.filter(v => classifyStatus(v.navStatus, v.speed, v.zone) === 'anchored').length;
-    const moored  = commercial.filter(v => classifyStatus(v.navStatus, v.speed, v.zone) === 'moored').length;
-    const underway = commercial.filter(v => classifyStatus(v.navStatus, v.speed, v.zone) === 'underway').length;
+    const anchored = commercial.filter(v => classifyStatus(v.navStatus, v.speed, v.zone, v.inBerthArea, v.inAnchorage) === 'anchored').length;
+    const moored  = commercial.filter(v => classifyStatus(v.navStatus, v.speed, v.zone, v.inBerthArea, v.inAnchorage) === 'moored').length;
+    const underway = commercial.filter(v => classifyStatus(v.navStatus, v.speed, v.zone, v.inBerthArea, v.inAnchorage) === 'underway').length;
     const inbound  = commercial.filter(
-      v => v.zone === 'outer' && classifyStatus(v.navStatus, v.speed, v.zone) === 'underway'
+      v => v.zone === 'outer' && classifyStatus(v.navStatus, v.speed, v.zone, v.inBerthArea, v.inAnchorage) === 'underway'
     ).length;
     const other = commercial.length - anchored - moored - underway;
 
@@ -398,7 +404,7 @@ function buildPortStates(messageCount = 0) {
     const berthUtilization = berthCap > 0 ? Math.min(100, Math.round((moored / berthCap) * 100)) : 0;
 
     const vesselList = commercial
-      .map(v => ({ ...v, statusLabel: classifyStatus(v.navStatus, v.speed, v.zone) }))
+      .map(v => ({ ...v, statusLabel: classifyStatus(v.navStatus, v.speed, v.zone, v.inBerthArea, v.inAnchorage) }))
       .sort((a, b) => {
         const order = { anchored: 0, moored: 1, underway: 2, unknown: 3 };
         return (order[a.statusLabel] ?? 3) - (order[b.statusLabel] ?? 3);
