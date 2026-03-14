@@ -2,7 +2,7 @@
 
 const { PORTS, inBox, normalizeDestination } = require('./ports-config');
 
-const VESSEL_EXPIRY_MS = 20 * 60 * 1000; // 20 minutes — covers moored/anchored ships (3-min AIS interval) through brief reconnect gaps
+const VESSEL_EXPIRY_MS = 5 * 60 * 60 * 1000; // 5 hours — lets vessel counts accumulate between sparse AISstream bursts
 
 // In-memory vessel state per port: mmsi → vessel object
 const portVessels = {};
@@ -286,15 +286,14 @@ function buildPortStates() {
       v => v.zone === 'outer' && (v.navStatus === 0 || v.navStatus === 8)
     ).length;
 
-    // Surface only commercial vessels in the detail list
+    // Surface all commercial vessels in the detail list
     const vesselList = commercial
       .map(v => ({ ...v, statusLabel: classifyStatus(v.navStatus, v.speed) }))
       .sort((a, b) => {
         // Anchored first (most relevant for congestion), then moored, then underway
         const order = { anchored: 0, moored: 1, underway: 2, unknown: 3 };
         return (order[a.statusLabel] ?? 3) - (order[b.statusLabel] ?? 3);
-      })
-      .slice(0, 20);
+      });
 
     return {
       name: port.name, lat: port.lat, lon: port.lon,
