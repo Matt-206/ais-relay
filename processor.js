@@ -381,13 +381,14 @@ function buildPortStates(messageCount = 0) {
     const fc = forecast(port.name, score, hourlyHistory, utcOffset);
     const containerRates = computeContainerRates(mult);
 
-    const anchored = vessels.filter(v => classifyStatus(v.navStatus, v.speed, v.zone) === 'anchored').length;
-    const moored  = vessels.filter(v => classifyStatus(v.navStatus, v.speed, v.zone) === 'moored').length;
-    const underway = vessels.filter(v => classifyStatus(v.navStatus, v.speed, v.zone) === 'underway').length;
-    const inbound  = vessels.filter(
+    // Metrics from commercial vessels only — matches vessel list and congestion score
+    const anchored = commercial.filter(v => classifyStatus(v.navStatus, v.speed, v.zone) === 'anchored').length;
+    const moored  = commercial.filter(v => classifyStatus(v.navStatus, v.speed, v.zone) === 'moored').length;
+    const underway = commercial.filter(v => classifyStatus(v.navStatus, v.speed, v.zone) === 'underway').length;
+    const inbound  = commercial.filter(
       v => v.zone === 'outer' && classifyStatus(v.navStatus, v.speed, v.zone) === 'underway'
     ).length;
-    const other = vessels.length - anchored - moored - underway;
+    const other = commercial.length - anchored - moored - underway;
 
     const totalVessels = vessels.length;
     const commercialVessels = commercial.length;
